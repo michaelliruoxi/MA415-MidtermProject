@@ -15,8 +15,6 @@ The dataset contains strawberry farming data with details about conventional and
 
 2.  Compare the production and sales of organic and conventional strawberries and strawberries sold for processing. Show differences in price and volume between California and Florida. How do price, cost, and volume relationships change over the years?
 
-## Data Cleaning
-
 Install packages
 
 ```{r}
@@ -40,7 +38,313 @@ library(scales)
 library(tidyr)
 ```
 
-Read file (cite)
+## Question 1:
+
+## Methodology
+
+This analysis used USDA survey data from 2021-2023 to compare the application of chemical treatments in conventional strawberry production between California and Florida. By examining the `Domain Category` field in the dataset, we identified chemicals with the most divergent usage patterns between the two states. The analysis focuses on three chemicals that show particularly distinct usage patterns:
+
+1.  **Captan** (fungicide)
+
+2.  **Spinetoram** (insecticide)
+
+3.  **Acetamiprid** (insecticide)
+
+```{r}
+# Chemical Treatment Analysis for Strawberries
+# Comparing usage patterns between California and Florida
+
+# Read the data file
+strawberry <- read_csv("strawb_mar6.csv", 
+                       col_names = TRUE,
+                       show_col_types = FALSE)
+
+# Filter for chemical data in California and Florida
+chem_data <- strawberry %>%
+  filter(
+    State %in% c("CALIFORNIA", "FLORIDA"),
+    grepl("CHEMICAL", Domain)
+  ) %>%
+  # Extract chemical names and codes from Domain Category
+  mutate(
+    ChemicalName = case_when(
+      grepl("CAPTAN = 81301", `Domain Category`) ~ "Captan",
+      grepl("SPINETORAM = 110007", `Domain Category`) ~ "Spinetoram",
+      grepl("ACETAMIPRID = 99050", `Domain Category`) ~ "Acetamiprid",
+      TRUE ~ NA_character_
+    )
+  ) %>%
+  # Keep only our target chemicals
+  filter(!is.na(ChemicalName)) %>%
+  # Clean up Value column - remove commas and convert to numeric
+  mutate(
+    Value = as.numeric(gsub(",", "", Value)),
+    # Create a clean chemical type variable
+    ChemicalType = case_when(
+      grepl("FUNGICIDE", Domain) ~ "Fungicide",
+      grepl("INSECTICIDE", Domain) ~ "Insecticide",
+      grepl("HERBICIDE", Domain) ~ "Herbicide",
+      grepl("OTHER", Domain) ~ "Other Chemical",
+      TRUE ~ "Unknown"
+    )
+  )
+
+# Function to check if data contains (D) values, which indicate disclosure concerns
+has_disclosure_issues <- function(data) {
+  any(grepl("\\(D\\)", data$Value))
+}
+
+# Check if we have disclosure concerns
+if(has_disclosure_issues(chem_data)) {
+  cat("Note: Some values contain (D), indicating they are withheld for disclosure concerns.")
+}
+
+# Summarize chemical usage by state, year, and chemical
+chem_summary <- chem_data %>%
+  group_by(State, Year, ChemicalName, ChemicalType) %>%
+  summarize(
+    AvgValue = mean(Value, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Create tables showing usage by state and year
+state_chem_table <- chem_summary %>%
+  pivot_wider(
+    names_from = Year,
+    values_from = AvgValue,
+    names_prefix = "Year_"
+  ) %>%
+  arrange(ChemicalName, State)
+
+# Calculate overall averages by chemical and state
+state_chem_avg <- chem_summary %>%
+  group_by(State, ChemicalName, ChemicalType) %>%
+  summarize(
+    AvgUsage = mean(AvgValue, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Create a wide format table for comparison
+state_comparison <- state_chem_avg %>%
+  pivot_wider(
+    names_from = State,
+    values_from = AvgUsage
+  ) %>%
+  mutate(
+    Difference = CALIFORNIA - FLORIDA,
+    PercentDiff = (Difference / ((CALIFORNIA + FLORIDA)/2)) * 100
+  )
+
+# Create plot for chemical comparison between states
+ggplot(state_chem_avg, aes(x = ChemicalName, y = AvgUsage, fill = State)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  labs(
+    title = "Average Chemical Usage in Strawberry Production",
+    subtitle = "Comparison between California and Florida",
+    x = "Chemical",
+    y = "Usage Value",
+    fill = "State",
+    caption = "Source: USDA Strawberry Production Data"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.title = element_text(face = "bold"),
+    legend.position = "top"
+  )
+ggsave("chemical_comparison.png", width = 8, height = 6)
+
+# Create plot for time trends by chemical and state
+ggplot(chem_summary, aes(x = Year, y = AvgValue, color = State, group = State)) +
+  geom_line(size = 1) +
+  geom_point(size = 3) +
+  facet_wrap(~ChemicalName, scales = "free_y") +
+  labs(
+    title = "Chemical Usage in Strawberry Production Over Time",
+    subtitle = "Trends in California vs. Florida (2021-2023)",
+    x = "Year",
+    y = "Usage Value",
+    color = "State",
+    caption = "Source: USDA Strawberry Production Data"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold"),
+    legend.position = "top"
+  )
+ggsave("chemical_trends.png", width = 10, height = 8)
+
+# Get additional information about each chemical from the data
+chemical_info <- tibble(
+  ChemicalName = c("Captan", "Spinetoram", "Acetamiprid"),
+  PrimaryUse = c("Fungicide", "Insecticide", "Insecticide"),
+  Description = c(
+    "A protective fungicide used to control diseases like anthracnose, Botrytis, and other fungal pathogens in strawberries.",
+    "A spinosyn insecticide that targets pests like thrips, leaf miners, and caterpillars through contact and ingestion.",
+    "A neonicotinoid insecticide that controls aphids, whiteflies, and other sucking pests in strawberry production."
+  ),
+  UsagePattern = c(
+    "Higher usage in California, likely due to favorable conditions for fungal pathogens in the cool, coastal growing regions.",
+    "Significantly higher usage in Florida, possibly reflecting different pest pressures and management approaches.",
+    "Much higher usage in Florida, suggesting different insect pressure or resistance management strategies."
+  )
+)
+
+# Print tables
+cat("\n--- Chemical Usage Comparison between California and Florida ---\n")
+print(state_comparison)
+
+cat("\n--- Chemical Usage by State and Year ---\n")
+print(state_chem_table)
+
+cat("\n--- Chemical Information ---\n")
+print(chemical_info)
+
+# Additional analysis: Look for correlations between chemical use and environmental factors
+# Note: This would require merging with weather/climate data not present in the dataset
+
+# Create a comprehensive report table
+report_table <- chemical_info %>%
+  left_join(state_comparison, by = "ChemicalName") %>%
+  select(ChemicalName, PrimaryUse, CALIFORNIA, FLORIDA, Difference, PercentDiff, Description, UsagePattern) %>%
+  rename(
+    Chemical = ChemicalName,
+    `California Usage` = CALIFORNIA,
+    `Florida Usage` = FLORIDA,
+    `Absolute Difference` = Difference,
+    `Percent Difference` = PercentDiff,
+    `Primary Purpose` = PrimaryUse
+  )
+
+# Format the report table nicely
+kable(report_table, format = "html", caption = "Chemical Treatments in Strawberry Production: California vs. Florida") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+# Output this table for the report
+write.csv(report_table, "chemical_treatment_comparison.csv", row.names = FALSE)
+
+# Create a chart showing relative usage proportions for each chemical by state
+prop_data <- state_chem_avg %>%
+  group_by(State) %>%
+  mutate(Proportion = AvgUsage / sum(AvgUsage) * 100)
+
+ggplot(prop_data, aes(x = State, y = Proportion, fill = ChemicalName)) +
+  geom_bar(stat = "identity", position = "stack") +
+  labs(
+    title = "Proportion of Chemical Usage by State",
+    subtitle = "Relative contribution of each chemical to total usage",
+    x = "State",
+    y = "Percentage of Total Usage",
+    fill = "Chemical",
+    caption = "Source: USDA Strawberry Production Data"
+  ) +
+  scale_y_continuous(labels = function(x) paste0(x, "%")) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold"),
+    legend.position = "right"
+  )
+ggsave("chemical_proportions.png", width = 8, height = 6)
+
+# Summary statistics and analysis notes
+cat("\n--- Key Findings ---\n")
+cat("1. Captan (fungicide) is used approximately", round(state_comparison$PercentDiff[state_comparison$ChemicalName == "Captan"]), 
+    "% more in California than in Florida.\n")
+cat("2. Spinetoram (insecticide) shows dramatically higher usage in Florida, with approximately", 
+    abs(round(state_comparison$PercentDiff[state_comparison$ChemicalName == "Spinetoram"])), 
+    "% more use compared to California.\n")
+cat("3. Acetamiprid (insecticide) is also significantly more used in Florida, with about", 
+    abs(round(state_comparison$PercentDiff[state_comparison$ChemicalName == "Acetamiprid"])), 
+    "% more use than in California.\n")
+cat("4. These differences likely reflect regional variations in pest pressure, climate conditions,\n",
+    "   and different integrated pest management strategies between the two major strawberry-producing states.\n")
+```
+
+## Chemical Profiles and Usage Patterns
+
+### Captan (Fungicide)
+
+**Chemical Properties and Purpose:** Captan is a broad-spectrum, protective fungicide that has been used in agriculture since the 1950s. It works by inhibiting spore germination and preventing fungal growth on plant surfaces. In strawberry production, Captan is primarily used to control anthracnose, Botrytis gray mold, leaf spot, and various other fungal diseases that can significantly reduce yield and fruit quality.
+
+**Usage Pattern Comparison:**
+
+-   **California:** Higher usage (approximately 104 units)
+
+-   **Florida:** Lower usage (approximately 49 units)
+
+-   **Difference:** 55 units more in California (approximately 72% higher)
+
+**Analysis:** The substantially higher use of Captan in California reflects several regional factors:
+
+-   California's coastal growing regions often experience cooler, foggier conditions that create ideal environments for fungal diseases, particularly Botrytis gray mold.
+
+-   The longer growing season in California may necessitate more frequent fungicide applications throughout the year.
+
+-   California's production system often employs raised beds with plastic mulch, which can create microclimates favorable to certain fungal pathogens.
+
+-   Resistance management strategies in California may rely more heavily on Captan as a multi-site fungicide that faces less resistance pressure than newer single-site fungicides.
+
+### Spinetoram (Insecticide)
+
+**Chemical Properties and Purpose:** Spinetoram is a second-generation spinosyn insecticide derived from the fermentation of Saccharopolyspora spinosa, a naturally occurring soil bacterium. It affects the insect's nervous system through a unique mode of action, causing paralysis and death. In strawberry production, Spinetoram targets pests such as thrips, leaf miners, caterpillars, and other lepidopteran pests that damage foliage and fruit.
+
+**Usage Pattern Comparison:**
+
+-   **California:** Lower usage (approximately 13 units)
+
+-   **Florida:** Higher usage (approximately 152 units)
+
+-   **Difference:** 139 units more in Florida (approximately 169% higher)
+
+**Analysis:** The dramatically higher use of Spinetoram in Florida indicates significant differences in pest management approaches:
+
+-   Florida's warmer climate supports year-round pest activity, particularly thrips and lepidopteran species that Spinetoram targets effectively.
+
+-   Florida's strawberry production faces greater pressure from specific pests like chilli thrips (*Scirtothrips dorsalis*) and western flower thrips (*Frankliniella occidentalis*), which have developed resistance to other insecticides.
+
+-   The winter growing season in Florida corresponds with peak periods for certain insect pests that require targeted control.
+
+-   Regulatory differences or resistance management programs in Florida may favor Spinetoram over alternative insecticides.
+
+### Acetamiprid (Insecticide)
+
+**Chemical Properties and Purpose:** Acetamiprid is a neonicotinoid insecticide that acts as a nicotinic acetylcholine receptor agonist, disrupting the insect's nervous system. It is systemic, meaning plants absorb and distribute it throughout their tissues. In strawberry production, Acetamiprid primarily controls aphids, whiteflies, thrips, and other sucking pests that can vector viral diseases and reduce plant vigor.
+
+**Usage Pattern Comparison:**
+
+-   **California:** Lower usage (approximately 8 units)
+
+-   **Florida:** Higher usage (approximately 104 units)
+
+-   **Difference:** 96 units more in Florida (approximately 171% higher)
+
+**Analysis:** The significantly higher use of Acetamiprid in Florida strawberry production suggests:
+
+-   Florida faces greater pressure from aphids and whiteflies that thrive in warmer climates.
+
+-   Vector management may be a higher priority in Florida due to the presence of specific viral diseases transmitted by aphids.
+
+-   Regulatory restrictions or resistance management strategies in California may limit neonicotinoid use more stringently.
+
+-   Florida growers may use Acetamiprid as part of a rotation strategy with other insecticides to manage resistance development.
+
+## Comparative Analysis and Implications
+
+The stark differences in chemical usage between California and Florida demonstrate how regional environmental factors, pest pressures, and management strategies influence strawberry production practices:
+
+1.  **Climate Impact:** California's coastal, Mediterranean climate versus Florida's subtropical conditions create fundamentally different disease and pest pressures, driving divergent chemical management strategies.
+
+2.  **Growing Season Influence:** Florida's winter production cycle versus California's extended growing season necessitates different timing and frequency of chemical applications.
+
+3.  **Regulatory Framework:** Variations in state regulations regarding chemical use likely influence treatment selections and application rates.
+
+4.  **Resistance Management:** Different regional histories of chemical use have likely led to varying pest resistance patterns, necessitating region-specific management strategies.
+
+5.  **Cost-Benefit Considerations:** The economic thresholds for chemical intervention may differ between the two production regions based on market timing, labor costs, and expected returns.
+
+## Question 2:
+
+Read file
 
 ```{r}
 # Label for the code chunk
@@ -210,10 +514,6 @@ ggplot(farm_sales_value, aes(x = reorder(`Domain Category`, total_value), y = to
 According to USDA Census data, strawberries are primarily grown by large-scale commercial farms. The \$1,000,000+ sales tier alone accounts for the overwhelming majority of the total production value, highlighting that strawberry farming in the U.S. is dominated by high-output, industrial-scale operations.
 
 While there are many small farms represented in the data, their economic impact is minimal by comparison. Mid-sized farms — those making between \$250,000 and \$999,999 — also contribute meaningfully, but their combined value still pales next to the top-tier producers.
-
-## Question 1:
-
-## Question 2:
 
 ```{r,fig.width = 10, fig.height = 6}
 # Ensure numeric values
