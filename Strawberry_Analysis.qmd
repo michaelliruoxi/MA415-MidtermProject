@@ -1,0 +1,480 @@
+---
+title: "Strawberry Analysis"
+author: "Ruoxi Li"
+format: html
+editor: visual
+---
+
+## Data Set
+
+The dataset contains strawberry farming data with details about conventional and organic cultivation.
+
+## Objective
+
+1.  Pick three chemical treatments used for conventional strawberries in both states and contrast their use. Try to find chemicals with divergent use patterns between the states. Produce, tables, plots, and descriptions of the chemicals, how they are used, and how their use differs between California and Florida.
+
+2.  Compare the production and sales of organic and conventional strawberries and strawberries sold for processing. Show differences in price and volume between California and Florida. How do price, cost, and volume relationships change over the years?
+
+## Data Cleaning
+
+Install packages
+
+```{r}
+# install required packages
+#install.packages("knitr")
+#install.packages("kableExtra")
+#install.packages("tidyverse")
+#install.packages("stringr")
+#install.packages("ggplot2")
+#install.packages("dplyr")
+#install.packages("scales")
+
+# loading required packages
+library(knitr)  
+library(kableExtra)
+library(tidyverse)
+library(stringr)
+library(ggplot2)
+library(dplyr)
+library(scales)
+library(tidyr)
+```
+
+Read file (cite)
+
+```{r}
+# Label for the code chunk
+#| label: read data - glimpse 
+
+# Read the CSV file "strawb_mar6.csv" into a data frame called 'strawberry'
+# - 'col_names = TRUE' tells read_csv to treat the first row as column names
+# - 'show_col_types = FALSE' suppresses printing of column type information
+strawberry <- read_csv("strawb_mar6.csv", 
+                       col_names = TRUE,
+                       show_col_types = FALSE)
+
+# Source the file "my_functions.R" to load custom functions defined in that script
+source("my_functions.R")
+```
+
+```{r}
+# remove columns from a data frame that contain only a single unique value
+strawb <- strawberry |> drop_one_value_col()
+```
+
+Exploring Data
+
+```{r}
+#| label: explore strawb data
+
+# assume data is a tibble
+# n_show is the number of rows to show
+
+show_unique <- function(data, nrows=10 ){
+  # make a tibble items to hold the data to show
+  # browser()
+  a <- nrows * dim(data)[2]  # number of cells in items
+  items <- rep(" ", a) # items will coerce everything to char
+  dim(items) <- c(nrows ,dim(data)[2]) # shape items
+  items <- as_tibble(items)
+  colnames(items) <- colnames(data)
+  # browser()
+  for(i in 1:dim(data)[2]){
+
+    col_items <- unique(data[,i])
+    # row_ex is the number of rows needed 
+    # to make the column length conformable with items
+    row_ex <- nrows - dim(col_items)[1] 
+    if(row_ex >= 0){
+      ex_rows <- tibble(rep(" ",row_ex))
+      colnames(ex_rows) <- colnames(col_items)
+      col_add <- rbind2(col_items, ex_rows)
+      
+    } else if(row_ex < 0){
+      col_add <- col_items[1:10,]
+      
+    }
+
+    items[,i] <- col_add
+
+  }
+  
+  return(items)
+}
+
+#test <- show_unique(strawb, 10)
+```
+
+```{r}
+#|label: split strawb into census and survey pieces
+
+strw_census <- strawb |> filter(Program == "CENSUS")
+
+strw_survey <- strawb |> filter(Program == "SURVEY")
+
+nrow(strawb) == (nrow(strw_census) + nrow(strw_survey))
+```
+
+```{r}
+#| label: examine Census and survey tibbles
+#| warning: false
+
+# Remove columns that contain only a single unique value
+s_census <- strw_census |> drop_one_value_col(prt_val = TRUE)
+s_survey <- strw_survey |> drop_one_value_col(prt_val = TRUE)
+
+# Preview up to 10 unique values per column in each data set
+unique_cen <- s_census |> show_unique(nrows = 10)
+unique_sur <- s_survey |> show_unique(nrows = 10)
+
+# Drop redundant or unnecessary columns from Census and Survey data
+strw_census <- s_census |> select(-`State ANSI`)
+
+# Drop 'State ANSI', 'Week Ending', and 'Period' for clarity and relevance
+strw_survey <- s_survey |> select(-`State ANSI`, -`Week Ending`, -Period)
+
+# Clean up workspace by removing intermediate and temporary objects
+rm(s_census, s_survey, strawberry, strawb, items)
+```
+
+## Strawberry production location comparison
+
+```{r}
+# Combine Census and Survey data
+all_strw <- bind_rows(strw_census, strw_survey)
+
+# Count observations by State
+state_all1 <- all_strw |> 
+  group_by(State) |> 
+  count() |> 
+  arrange(desc(n))  # Sort by count
+
+# Improved bar plot
+ggplot(state_all1, aes(x = reorder(State, -n), y = n)) +
+  geom_bar(stat = "identity", fill = "tomato", color = "black") +
+  labs(
+    title = "Strawberry Production by State",
+    x = "State",
+    y = "Number of Records"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.title = element_text(face = "bold", hjust = 0.5)
+  )
+```
+
+Based on the bar chart showing the number of records per state in the USDA strawberry dataset:
+
+California is by far the leading state in strawberry production, with the highest number of records in the dataset. Florida comes in second, with a substantial number of entries as well. Other states with recorded strawberry activity include: Connecticut, Massachusetts, Maine, New Hampshire, Rhode Island, Vermont, New York.
+
+```{r}
+# Show unique values in the 'Domain' column from both datasets
+unique(strw_census$Domain)
+unique(strw_survey$Domain)
+```
+
+```{r}
+# Count number of records per Domain in Census
+strw_census |> 
+  count(Domain, sort = TRUE)
+
+# Count number of records per Domain in Survey
+strw_survey |> 
+  count(Domain, sort = TRUE)
+```
+
+```{r, fig.width = 10, fig.height = 6}
+# Clean the Value column: remove commas and ensure numeric conversion only where possible
+strw_census <- strw_census |> 
+  mutate(Value = gsub(",", "", Value),           # Remove commas
+         Value = as.numeric(Value))              # Convert to numeric
+
+# Summarize by total strawberry production value by sales tier
+farm_sales_value <- strw_census |>
+  filter(Domain == "FARM SALES") |>
+  group_by(`Domain Category`) |>
+  summarise(total_value = sum(Value, na.rm = TRUE)) |>
+  arrange(desc(total_value))
+
+ggplot(farm_sales_value, aes(x = reorder(`Domain Category`, total_value), y = total_value)) +
+  geom_bar(stat = "identity", fill = "darkorange", color = "black") +
+  labs(title = "Strawberry Production Value by Farm Sales Tier",
+       x = "Farm Sales Tier",
+       y = "Total Production Value ($)") +
+  scale_y_continuous(labels = label_comma()) +  # <- formats axis nicely
+  coord_flip() +
+  theme_minimal(base_size = 14)
+```
+
+According to USDA Census data, strawberries are primarily grown by large-scale commercial farms. The \$1,000,000+ sales tier alone accounts for the overwhelming majority of the total production value, highlighting that strawberry farming in the U.S. is dominated by high-output, industrial-scale operations.
+
+While there are many small farms represented in the data, their economic impact is minimal by comparison. Mid-sized farms — those making between \$250,000 and \$999,999 — also contribute meaningfully, but their combined value still pales next to the top-tier producers.
+
+## Question 1:
+
+## Question 2:
+
+```{r,fig.width = 10, fig.height = 6}
+# Ensure numeric values
+strw_census <- strw_census |>
+  mutate(Value = as.numeric(gsub(",", "", Value)))
+
+# Filter for certified organic sales
+organic_sales_usd <- strw_census |> 
+  filter(
+    grepl("SALES", Category, ignore.case = TRUE),
+    grepl("ORGANIC", Category, ignore.case = TRUE),
+    Domain == "ORGANIC STATUS",
+    `Domain Category` == "ORGANIC STATUS: (NOP USDA CERTIFIED)",
+    !is.na(Value)
+  )
+
+# Summarize by state
+organic_sales_usd_by_state <- organic_sales_usd |> 
+  group_by(State) |> 
+  summarise(total_sales_usd = sum(Value, na.rm = TRUE)) |> 
+  arrange(desc(total_sales_usd))
+
+# Prepare the percentage + label text
+organic_sales_usd_by_state <- organic_sales_usd_by_state |> 
+  mutate(
+    pct = total_sales_usd / sum(total_sales_usd),
+    label = paste0(State, ": ", scales::percent(pct, accuracy = 0.1))
+  )
+
+# Recalculate % and group small states
+threshold <- 0.05
+
+organic_sales_usd_by_state <- organic_sales_usd_by_state |>
+  mutate(pct = total_sales_usd / sum(total_sales_usd)) |>
+  mutate(State_grouped = ifelse(pct < threshold, "Other", State)) |>
+  group_by(State_grouped) |>
+  summarise(total_sales_usd = sum(total_sales_usd)) |>
+  ungroup() |>
+  mutate(
+    pct = total_sales_usd / sum(total_sales_usd),
+    label = paste0(State_grouped, ": ", percent(pct, accuracy = 0.1))
+  )
+
+
+# Add conditional label (only show if > 3%)
+organic_sales_usd_by_state <- organic_sales_usd_by_state |> 
+  mutate(
+    show_label = ifelse(pct > 0.03, label, "")
+  )
+# Plot donut chart with combined categories
+ggplot(organic_sales_usd_by_state, aes(x = "", y = total_sales_usd, fill = State_grouped)) +
+  geom_bar(width = 0.6, stat = "identity", color = "black") +
+  coord_polar("y", start = 0) +
+  geom_text(
+    aes(label = show_label), 
+    position = position_stack(vjust = 0.5),
+    size = 4,
+    color = "white",
+    fontface = "bold"
+  ) +
+  labs(
+    title = "Certified Organic Strawberry Sales by State",
+    fill = "State"
+  ) +
+  theme_void(base_size = 14) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold")
+  )
+```
+
+Certified organic strawberries are overwhelmingly produced by large-scale operations in California, with Florida contributing a smaller but notable share. Other states participate in organic production, but their total sales are minimal. This implies that organic strawberry farming is both geographically and economically concentrated, likely driven by economies of scale and climate advantages in California.
+
+```{r}
+# Clean data and create a new column "Measurement" that identifies if the row is for Acres or Yield
+straw_data_clean <- all_strw %>%
+  mutate(
+    # Replace en-dash with hyphen and remove extra spaces
+    Fruit = str_replace_all(Fruit, "–", "-"),
+    Fruit = str_squish(Fruit),
+    # Convert Value to numeric (non-numeric entries become NA)
+    Value = as.numeric(gsub(",", "", Value)),
+    # Create a new column based on keywords in Fruit
+    Measurement = case_when(
+      str_detect(Fruit, "ACRES HARVESTED") ~ "Acres",
+      str_detect(Fruit, "YIELD") ~ "Yield",
+      TRUE ~ NA_character_
+    )
+  )
+
+# Filter for California and Florida and only rows that have a valid Measurement
+volume_data <- straw_data_clean %>%
+  filter(
+    State %in% c("CALIFORNIA", "FLORIDA"),
+    !is.na(Measurement)
+  ) %>%
+  select(Year, State, Measurement, Value)
+
+# Pivot so that we get separate columns for Acres and Yield
+volume_data <- volume_data %>%
+  pivot_wider(names_from = Measurement, values_from = Value)
+
+# Calculate production volume in CWT (assume Volume_CWT = Acres * Yield)
+volume_data <- volume_data %>%
+  mutate(Production_CWT = Acres * Yield)
+
+# Check the resulting data frame
+print(volume_data)
+
+# Plot production volume over the years for California vs Florida
+ggplot(volume_data, aes(x = Year, y = Production_CWT, color = State, group = State)) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 3) +
+  scale_y_continuous(labels = label_comma()) +
+  labs(
+    title = "Strawberry Production Volume (CWT) by Year: CA vs FL",
+    x = "Year",
+    y = "Production Volume (CWT)"
+  ) +
+  theme_minimal(base_size = 14)
+```
+
+California consistently outproduces Florida, with \~5-8 times the total CWT. Over 2020–2023, California’s production hovers between 23–25 million CWT, while Florida ranges around 3–4 million CWT. Both states show relatively stable or slightly increasing volumes across these years.
+
+```{r}
+ggplot(volume_data, aes(x = Year, y = Yield, color = State, group = State)) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 3) +
+  labs(
+    title = "Strawberry Yield (CWT / Acre) by Year: CA vs FL",
+    x = "Year",
+    y = "Yield (CWT / Acre)"
+  ) +
+  theme_minimal(base_size = 14)
+```
+
+California achieves a much higher yield (around 600–700 CWT/acre) than Florida (about 200–220 CWT/acre). California’s yield slightly declines over time (e.g., \~660 CWT/acre in 2020 down to \~620 by 2023), while Florida’s yield stays lower but is relatively stable or slightly up.
+
+California’s climate, infrastructure, and farming practices give it a yield advantage. Florida’s lower yields may reflect soil/climate constraints or different farming methods.
+
+```{r}
+ggplot(volume_data, aes(x = Year, y = Acres, color = State, group = State)) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 3) +
+  labs(
+    title = "Strawberry Acres Harvested by Year: CA vs FL",
+    x = "Year",
+    y = "Acres"
+  ) +
+  theme_minimal(base_size = 14)
+
+```
+
+California has around 38k–43k acres over 2020–2023, while Florida ranges from 6k–10k acres. Both states expand harvested acreage in the middle years, with California peaking around 43k in 2022 and Florida nearing 10k acres in 2023.
+
+California’s larger land base dedicated to strawberries (combined with higher yields) explains its dominant production volume. Florida is increasing acreage over time but remains well below California.
+
+```{r}
+price_data <- straw_data_clean %>%
+  filter(
+    State %in% c("CALIFORNIA", "FLORIDA"),
+    Fruit == "STRAWBERRIES - PRICE RECEIVED"
+  )
+
+price_summary <- price_data %>%
+  group_by(Year, State) %>%
+  summarise(
+    AvgPrice = mean(Value, na.rm = TRUE)
+  ) %>%
+  ungroup()
+
+ggplot(price_summary, aes(x = Year, y = AvgPrice, color = State, group = State)) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 3) +
+  scale_y_continuous(labels = label_dollar()) +
+  labs(
+    title = "Strawberry Price ($/CWT) by Year: CA vs FL",
+    x = "Year",
+    y = "Price ($ per CWT)"
+  ) +
+  theme_minimal(base_size = 14)
+```
+
+Florida commands a higher price per CWT than California in most years. Florida’s price ranges from \$140–\$170 (with a peak around 2022), then dips to \~\$120 in 2023. California’s price is lower, starting around \$90 in 2020, peaking near \$110–\$115, then settling to \~\$95 in 2023.
+
+Florida’s smaller supply and potentially niche or local markets may keep prices higher. California’s large-scale production can drive prices down. Over time, price volatility is noticeable: Florida spikes in 2022, then drops; California sees a smaller range of fluctuation.
+
+```{r,fig.width = 10, fig.height = 6}
+
+census_organic_acres <- strw_census %>%
+  mutate(
+    # Convert Value to numeric
+    Value = as.numeric(gsub(",", "", Value))
+  ) %>%
+  # Filter for year=2021, states CA/FL, and Category=ORGANIC - ACRES HARVESTED
+  filter(
+    Year == 2021,
+    State %in% c("CALIFORNIA", "FLORIDA"),
+    Category == " ORGANIC - ACRES HARVESTED"
+  ) %>%
+  # Summarize (if there are multiple rows, sum them up)
+  group_by(Year, State) %>%
+  summarise(Total_Acres_Census = sum(Value, na.rm = TRUE)) %>%
+  ungroup()
+
+survey_acres <- strw_survey %>%
+  mutate(
+    Value = as.numeric(gsub(",", "", Value))
+  ) %>%
+  # Filter for year=2021, states CA/FL, and Fruit=STRAWBERRIES - ACRES HARVESTED
+  filter(
+    Year == 2021,
+    State %in% c("CALIFORNIA", "FLORIDA"),
+    Fruit == "STRAWBERRIES - ACRES HARVESTED"
+  ) %>%
+  group_by(Year, State) %>%
+  summarise(Total_Acres_Survey = sum(Value, na.rm = TRUE)) %>%
+  ungroup()
+
+acres_compare <- left_join(
+  census_organic_acres,
+  survey_acres,
+  by = c("Year", "State")
+)
+
+acres_compare_long <- acres_compare %>%
+  pivot_longer(
+    cols = c("Total_Acres_Census", "Total_Acres_Survey"),
+    names_to = "Source",
+    values_to = "Acres"
+  )
+
+ggplot(acres_compare_long, aes(x = State, y = Acres, fill = Source)) +
+  geom_col(position = "dodge") +
+  labs(
+    title = "Comparing Organic Acres (Orange) vs. All/Conventional Acres (Blue) in 2021",
+    x = "State",
+    y = "Acres"
+  ) +
+  theme_minimal(base_size = 14)
+```
+
+California: \~40k total acres (blue) vs. only a few thousand organic acres (orange).
+
+Florida: \~10k total acres vs. a small fraction organic (\~1k).
+
+Organic remains a small slice of total acreage in both states.
+
+Even in the top strawberry-producing states, organic acreage is significantly smaller than conventional. California leads in absolute organic acres (simply because it has more farmland overall), but as a percentage, organic is still a minor share of total production.
+
+From all the data and graph, we can reach a conclusion that the U.S. strawberry market reveals significant contrasts between California and Florida production systems. California dominates the industry with substantially greater acreage and volume, producing over 20 million CWT compared to Florida's 3-4 million CWT. This scale advantage likely contributes to California's relatively stable pricing range (\$90-\$115 per CWT) and potentially lower unit costs. Florida, despite its smaller production footprint, often commands higher prices for its strawberries, though with greater market volatility, as evidenced by price peaks in 2022 followed by declines in 2023. The organic segment remains modest in both states, constituting a small fraction of total production, though California maintains more organic acreage in absolute terms. While processing data isn't explicitly detailed, a portion of total production from both states typically goes toward processed products like jams and frozen strawberries, with processing prices generally differing from fresh market prices. Over time, California has maintained relatively consistent production volumes while Florida shows modest increases in acreage and production, though still at levels far below California's scale.
+
+```{r}
+# Survey check
+strw_survey %>%
+  filter(
+    Year == 2021,
+    State %in% c("CALIFORNIA", "FLORIDA"),
+    Fruit == "STRAWBERRIES - ACRES HARVESTED"
+  )
+```
+
+```{r}
+#rm(list=ls())
+```
