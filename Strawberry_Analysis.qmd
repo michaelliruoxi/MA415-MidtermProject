@@ -700,6 +700,85 @@ Florida commands a higher price per CWT than California in most years. Florida�
 
 Florida’s smaller supply and potentially niche or local markets may keep prices higher. California’s large-scale production can drive prices down. Over time, price volatility is noticeable: Florida spikes in 2022, then drops; California sees a smaller range of fluctuation.
 
+```{r}
+# Focus on 2021 data and calculate organic price from sales values
+organic_sales_dollars <- all_strw %>%
+  filter(
+    Year == 2021,
+    State %in% c("CALIFORNIA", "FLORIDA"),
+    Domain == "ORGANIC STATUS",
+    `Domain Category` == "ORGANIC STATUS: (NOP USDA CERTIFIED)",
+    grepl("SALES", Category),
+    grepl("$", Item)
+  ) %>%
+  mutate(Value = as.numeric(gsub(",", "", Value))) %>%
+  group_by(State) %>%
+  summarise(OrgSalesDollars = sum(Value, na.rm = TRUE))
+
+organic_sales_cwt <- all_strw %>%
+  filter(
+    Year == 2021,
+    State %in% c("CALIFORNIA", "FLORIDA"),
+    Domain == "ORGANIC STATUS",
+    `Domain Category` == "ORGANIC STATUS: (NOP USDA CERTIFIED)",
+    grepl("SALES", Category),
+    grepl("MEASURED IN CWT", Item)
+  ) %>%
+  mutate(Value = as.numeric(gsub(",", "", Value))) %>%
+  group_by(State) %>%
+  summarise(OrgSalesCWT = sum(Value, na.rm = TRUE))
+
+# Calculate organic price per CWT
+organic_price_2021 <- organic_sales_dollars %>%
+  inner_join(organic_sales_cwt, by = "State") %>%
+  mutate(OrgPrice = OrgSalesDollars / OrgSalesCWT)
+
+# Use the existing price_data table for conventional prices
+conventional_price_2021 <- price_data %>%
+  filter(
+    Year == 2021,
+    State %in% c("CALIFORNIA", "FLORIDA")
+  ) %>%
+  group_by(State) %>%
+  summarise(ConvPrice = mean(Value, na.rm = TRUE))
+
+# Calculate price premium using the organic_price_2021 obtained earlier
+price_premium_2021 <- organic_price_2021 %>%
+  inner_join(conventional_price_2021, by = "State") %>%
+  mutate(
+    PricePremium = (OrgPrice - ConvPrice) / ConvPrice * 100
+  )
+
+# Calculate price premium
+price_premium_2021 <- organic_price_2021 %>%
+  inner_join(conventional_price_2021, by = "State") %>%
+  mutate(
+    PricePremium = (OrgPrice - ConvPrice) / ConvPrice * 100
+  )
+
+# Create the visualization
+ggplot(price_premium_2021, aes(x = State, y = PricePremium, fill = State)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = c("CALIFORNIA" = "#1f77b4", "FLORIDA" = "#ff7f0e")) +
+  scale_y_continuous(labels = function(x) paste0(x, "%")) +
+  labs(
+    title = "Organic Price Premium for Strawberries (2021)",
+    subtitle = "Percentage increase over conventional prices",
+    x = "State",
+    y = "Price Premium (%)"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5),
+    legend.position = "none"
+  )
+```
+
+Both states demonstrate substantial organic price premiums, indicating that consumers in both markets are willing to pay significantly more for organically grown strawberries. The premiums hover around 70-80% above conventional prices, which is notable even compared to typical organic premiums in other agricultural products.
+
+California shows a premium of approximately 76%, while Florida exhibits a slightly lower but still substantial premium of about 71%. This indicates that despite geographical and market differences, organic strawberries maintain significant price advantages in both major production regions.
+
 ```{r,fig.width = 10, fig.height = 6}
 
 census_organic_acres <- strw_census %>%
@@ -764,16 +843,6 @@ Organic remains a small slice of total acreage in both states.
 Even in the top strawberry-producing states, organic acreage is significantly smaller than conventional. California leads in absolute organic acres (simply because it has more farmland overall), but as a percentage, organic is still a minor share of total production.
 
 From all the data and graph, we can reach a conclusion that the U.S. strawberry market reveals significant contrasts between California and Florida production systems. California dominates the industry with substantially greater acreage and volume, producing over 20 million CWT compared to Florida's 3-4 million CWT. This scale advantage likely contributes to California's relatively stable pricing range (\$90-\$115 per CWT) and potentially lower unit costs. Florida, despite its smaller production footprint, often commands higher prices for its strawberries, though with greater market volatility, as evidenced by price peaks in 2022 followed by declines in 2023. The organic segment remains modest in both states, constituting a small fraction of total production, though California maintains more organic acreage in absolute terms. While processing data isn't explicitly detailed, a portion of total production from both states typically goes toward processed products like jams and frozen strawberries, with processing prices generally differing from fresh market prices. Over time, California has maintained relatively consistent production volumes while Florida shows modest increases in acreage and production, though still at levels far below California's scale.
-
-```{r}
-# Survey check
-strw_survey %>%
-  filter(
-    Year == 2021,
-    State %in% c("CALIFORNIA", "FLORIDA"),
-    Fruit == "STRAWBERRIES - ACRES HARVESTED"
-  )
-```
 
 ```{r}
 #rm(list=ls())
