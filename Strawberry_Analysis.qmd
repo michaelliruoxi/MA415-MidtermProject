@@ -3,6 +3,8 @@ title: "Strawberry Analysis"
 author: "Ruoxi Li"
 format: html
 editor: visual
+execute:
+  echo: false
 ---
 
 ## Data Set
