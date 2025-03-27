@@ -347,6 +347,7 @@ The stark differences in chemical usage between California and Florida demonstra
 Read file
 
 ```{r}
+# The following code was adapted from https://github.com/MA615-415-Spring-2025/class-15---Mar-20.git
 # Label for the code chunk
 #| label: read data - glimpse 
 
@@ -362,6 +363,7 @@ source("my_functions.R")
 ```
 
 ```{r}
+# The following code was adapted from https://github.com/MA615-415-Spring-2025/class-15---Mar-20.git
 # remove columns from a data frame that contain only a single unique value
 strawb <- strawberry |> drop_one_value_col()
 ```
@@ -370,7 +372,7 @@ Exploring Data
 
 ```{r}
 #| label: explore strawb data
-
+# The following code was adapted from https://github.com/MA615-415-Spring-2025/class-15---Mar-20.git
 # assume data is a tibble
 # n_show is the number of rows to show
 
@@ -410,6 +412,7 @@ show_unique <- function(data, nrows=10 ){
 ```
 
 ```{r}
+# The following code was adapted from https://github.com/MA615-415-Spring-2025/class-15---Mar-20.git
 #|label: split strawb into census and survey pieces
 
 strw_census <- strawb |> filter(Program == "CENSUS")
@@ -420,6 +423,7 @@ nrow(strawb) == (nrow(strw_census) + nrow(strw_survey))
 ```
 
 ```{r}
+# The following code was adapted from https://github.com/MA615-415-Spring-2025/class-15---Mar-20.git
 #| label: examine Census and survey tibbles
 #| warning: false
 
@@ -846,4 +850,22 @@ From all the data and graph, we can reach a conclusion that the U.S. strawberry 
 
 ```{r}
 #rm(list=ls())
+citation()
 ```
+
+## References
+
+```         
+R Core Team (2024). _R: A Language and Environment for Statistical Computing_. R Foundation for Statistical Computing, Vienna, Austria.
+  <https://www.R-project.org/>.
+```
+
+### Dataset Source
+
+Massachusetts Institute of Technology \[MIT\]. (2025). *Strawberry Analysis Dataset* \[Data file\]. Retrieved from <https://github.com/MA615-415-Spring-2025/class-15---Mar-20.git>
+
+### AI Assistance
+
+OpenAI. (2025). ChatGPT (GPT-o3 mini high) \[Large language model\]. Retrieved from [https://chat.openai.com](https://chat.openai.com/)
+
+Anthropic. (2025). Claude 3.7 Sonnet \[Large language model\]. Retrieved from [https://claude.ai](https://claude.ai/)
