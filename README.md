@@ -8,7 +8,7 @@ This repository contains a comprehensive analysis of strawberry production in Ca
 - `my_functions.R`: Helper functions for data cleaning and processing
 - `Strawberry_Analysis.qmd`: Quarto document containing the full analysis and code
 - `Strawberry_Analysis.html`: html document containing the full analysis and code
-- - `Strawberry_Analysis.pdf`: pdf document containing the full report
+- `Strawberry_Analysis.pdf`: pdf document containing the full report
 
 ## Research Questions
 1. **Chemical Treatment Analysis**: Examines three chemical treatments (Captan, Spinetoram, and Acetamiprid) used in conventional strawberry farming, contrasting their application patterns between California and Florida.
